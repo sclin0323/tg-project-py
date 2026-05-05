@@ -1,0 +1,18 @@
+# 排程
+schedule==1.2.2
+
+# HTTP
+requests==2.32.3
+
+# 資料處理
+numpy>=2.2.6
+pandas>=2.0.0
+
+# Excel 讀寫
+openpyxl>=3.1.0
+
+# Microsoft Graph API（讀取 OneDrive/SharePoint）
+msal>=1.28.0
+
+# Anthropic Claude API
+anthropic>=0.40.0

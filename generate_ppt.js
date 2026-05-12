@@ -1,5 +1,5 @@
 /**
- * generate_ppt.js — 執行摘要導向版本
+ * generate_ppt.js — 2-Page Per Project Edition
  * 用法: node generate_ppt.js <data.json> <output.pptx>
  */
 
@@ -10,7 +10,7 @@ const dataPath   = process.argv[2];
 const outputPath = process.argv[3];
 const data = JSON.parse(fs.readFileSync(dataPath, "utf8"));
 
-// ── 色盤 (企業藍 + RAG) ────────────────────────────────
+// ── 色盤 ────────────────────────────────────────────────
 const C = {
   navy:      "1E3A5F",
   blue:      "2E6DB4",
@@ -23,17 +23,19 @@ const C = {
   divider:   "E2E8F0",
   accent:    "F0A500",
   red:       "DC2626",
-  amber:     "F59E0B",
-  green:     "16A34A",
   redSoft:   "FEE2E2",
+  redDeep:   "991B1B",
+  amber:     "F59E0B",
   amberSoft: "FEF3C7",
+  amberDeep: "92400E",
+  green:     "16A34A",
   greenSoft: "D1FAE5",
+  greenDeep: "065F46",
 };
 
 const HEALTH_COLOR = { RED: C.red, AMBER: C.amber, GREEN: C.green };
 const HEALTH_SOFT  = { RED: C.redSoft, AMBER: C.amberSoft, GREEN: C.greenSoft };
 const HEALTH_LABEL = { RED: "警報", AMBER: "注意", GREEN: "健康" };
-const HEALTH_ICON  = { RED: "🔴", AMBER: "🟡", GREEN: "🟢" };
 
 const STATUS_COLOR = {
   "完成":  C.green,
@@ -45,31 +47,48 @@ const STATUS_COLOR = {
 
 // ── 共用工具 ────────────────────────────────────────────
 function makeShadow() {
-  return { type: "outer", blur: 6, offset: 2, angle: 135, color: "000000", opacity: 0.08 };
+  return { type: "outer", blur: 5, offset: 2, angle: 135, color: "000000", opacity: 0.07 };
 }
 
-function slideHeader(slide, title, subtitle) {
-  slide.addShape("rect", { x: 0, y: 0, w: 10, h: 0.6, fill: { color: C.navy }, line: { color: C.navy } });
+function slideHeader(slide, title, subtitle, pageTag) {
+  slide.addShape("rect", { x: 0, y: 0, w: 10, h: 0.58, fill: { color: C.navy }, line: { color: C.navy } });
   slide.addText(title, {
-    x: 0.4, y: 0, w: 6.5, h: 0.6,
-    fontSize: 18, bold: true, color: C.white, fontFace: "Calibri",
-    valign: "middle", margin: 0
+    x: 0.35, y: 0, w: 7.2, h: 0.58,
+    fontSize: 17, bold: true, color: C.white, fontFace: "Calibri", valign: "middle", margin: 0
   });
   if (subtitle) {
     slide.addText(subtitle, {
-      x: 0, y: 0, w: 9.6, h: 0.6,
-      fontSize: 10, color: "CADCFC", fontFace: "Calibri",
-      align: "right", valign: "middle", margin: 0
+      x: 0, y: 0, w: 9.65, h: 0.58,
+      fontSize: 9.5, color: "CADCFC", fontFace: "Calibri", align: "right", valign: "middle", margin: 0
     });
   }
-  slide.addShape("rect", { x: 0, y: 0.6, w: 10, h: 0.03, fill: { color: C.accent }, line: { color: C.accent } });
+  if (pageTag) {
+    slide.addText(pageTag, {
+      x: 0, y: 5.38, w: 9.85, h: 0.18,
+      fontSize: 8, color: C.muted, fontFace: "Calibri", align: "right", valign: "middle"
+    });
+  }
+  slide.addShape("rect", { x: 0, y: 0.58, w: 10, h: 0.03, fill: { color: C.accent }, line: { color: C.accent } });
 }
 
 function progressBar(slide, x, y, w, h, pct, fillColor) {
-  slide.addShape("rect", { x, y, w, h, fill: { color: C.divider }, line: { color: C.divider } });
+  slide.addShape("roundRect", { x, y, w, h, fill: { color: C.divider }, line: { color: C.divider }, rectRadius: 0.02 });
   const filled = Math.max(0, Math.min(100, pct)) / 100 * w;
   if (filled > 0.02) {
-    slide.addShape("rect", { x, y, w: filled, h, fill: { color: fillColor }, line: { color: fillColor } });
+    slide.addShape("roundRect", { x, y, w: filled, h, fill: { color: fillColor }, line: { color: fillColor }, rectRadius: 0.02 });
+  }
+}
+
+function card(slide, x, y, w, h, opts) {
+  opts = opts || {};
+  slide.addShape("rect", {
+    x, y, w, h,
+    fill: { color: opts.fill || C.white },
+    line: { color: opts.border || C.divider, pt: opts.borderPt || 0.5 },
+    shadow: opts.shadow ? makeShadow() : undefined
+  });
+  if (opts.accentLeft) {
+    slide.addShape("rect", { x, y, w: 0.08, h, fill: { color: opts.accentLeft }, line: { color: opts.accentLeft } });
   }
 }
 
@@ -80,251 +99,225 @@ const pres = new pptxgen();
 pres.layout = "LAYOUT_16x9";
 pres.title  = "專案管理報告";
 
-// ── Slide 1: 封面（含一句話定調）────────────────────────
+// ══════════════════════════════════════════════════════
+// Slide 1: 封面
+// ══════════════════════════════════════════════════════
 {
   const s = pres.addSlide();
   s.background = { color: C.navy };
 
-  // 右側裝飾
-  s.addShape("rect", { x: 7.2, y: 0, w: 2.8, h: 5.625, fill: { color: C.blue }, line: { color: C.blue } });
-  s.addShape("rect", { x: 8.8, y: 0, w: 1.2, h: 5.625, fill: { color: C.accent }, line: { color: C.accent } });
+  s.addShape("rect", { x: 7.3, y: 0, w: 2.7, h: 5.625, fill: { color: C.blue }, line: { color: C.blue } });
+  s.addShape("rect", { x: 8.85, y: 0, w: 1.15, h: 5.625, fill: { color: C.accent }, line: { color: C.accent } });
 
   s.addText("專案管理報告", {
-    x: 0.6, y: 1.4, w: 6.4, h: 0.9,
-    fontSize: 38, bold: true, color: C.white, fontFace: "Calibri", charSpacing: 4
+    x: 0.6, y: 1.3, w: 6.5, h: 0.95,
+    fontSize: 40, bold: true, color: C.white, fontFace: "Calibri", charSpacing: 4
   });
   s.addText("Executive Status Report", {
-    x: 0.6, y: 2.3, w: 6.4, h: 0.4,
+    x: 0.6, y: 2.28, w: 6.5, h: 0.4,
     fontSize: 13, color: "CADCFC", fontFace: "Calibri", italic: true
   });
-  s.addShape("rect", { x: 0.6, y: 2.85, w: 3.5, h: 0.04, fill: { color: C.accent }, line: { color: C.accent } });
+  s.addShape("rect", { x: 0.6, y: 2.82, w: 3.6, h: 0.04, fill: { color: C.accent }, line: { color: C.accent } });
 
-  // 一句話 headline
-  const hlColor = HEALTH_COLOR[data.overallHealth];
+  const hlColor = HEALTH_COLOR[data.overallHealth] || C.blue;
   s.addShape("roundRect", {
-    x: 0.6, y: 3.1, w: 6.4, h: 0.7,
+    x: 0.6, y: 3.05, w: 6.5, h: 0.72,
     fill: { color: hlColor }, line: { color: hlColor }, rectRadius: 0.08
   });
-  s.addText(data.headline, {
-    x: 0.6, y: 3.1, w: 6.4, h: 0.7,
+  s.addText(data.headline || "專案狀態報告", {
+    x: 0.6, y: 3.05, w: 6.5, h: 0.72,
     fontSize: 17, bold: true, color: C.white, fontFace: "Calibri",
     align: "center", valign: "middle", margin: 0
   });
-
-  s.addText(`報告日期　${data.reportDate}`, {
-    x: 0.6, y: 4.0, w: 6.4, h: 0.4,
-    fontSize: 13, color: "CADCFC", fontFace: "Calibri"
+  s.addText("報告日期　" + data.reportDate, {
+    x: 0.6, y: 3.98, w: 6.5, h: 0.38, fontSize: 13, color: "CADCFC", fontFace: "Calibri"
   });
-  s.addText(`下次回報　${data.nextReport}`, {
-    x: 0.6, y: 4.4, w: 6.4, h: 0.4,
-    fontSize: 13, color: "CADCFC", fontFace: "Calibri"
+  s.addText("下次回報　" + data.nextReport, {
+    x: 0.6, y: 4.36, w: 6.5, h: 0.38, fontSize: 13, color: "CADCFC", fontFace: "Calibri"
   });
 }
 
-// ── Slide 2: ★ 執行摘要（一頁掌握）─────────────────────
+// ══════════════════════════════════════════════════════
+// Slide 2: 執行摘要
+// ══════════════════════════════════════════════════════
 {
   const s = pres.addSlide();
   s.background = { color: C.bg };
-  slideHeader(s, "執行摘要", `一頁掌握所有專案 ｜ ${data.reportDate}`);
+  slideHeader(s, "執行摘要", "一頁掌握所有專案 ｜ " + data.reportDate);
 
-  // 上方三個健康度燈號統計
-  const summary = [
-    { label: "需立即關注", count: data.stats.redProjects,   color: C.red,   level: "RED"   },
-    { label: "需要觀察",   count: data.stats.amberProjects, color: C.amber, level: "AMBER" },
-    { label: "進度健康",   count: data.stats.greenProjects, color: C.green, level: "GREEN" },
+  var summary = [
+    { label: "需立即關注", count: data.stats.redProjects,   color: C.red,   soft: C.redSoft,   level: "RED"   },
+    { label: "需要觀察",   count: data.stats.amberProjects, color: C.amber, soft: C.amberSoft, level: "AMBER" },
+    { label: "進度健康",   count: data.stats.greenProjects, color: C.green, soft: C.greenSoft, level: "GREEN" },
   ];
-  summary.forEach((card, i) => {
-    const x = 0.4 + i * 3.13;
-    s.addShape("rect", { x, y: 0.8, w: 2.95, h: 0.85, fill: { color: C.white }, line: { color: HEALTH_SOFT[card.level], pt: 1 }, shadow: makeShadow() });
-    s.addShape("rect", { x, y: 0.8, w: 0.08, h: 0.85, fill: { color: card.color }, line: { color: card.color } });
-    // 數字
-    s.addText(String(card.count), {
-      x: x + 0.2, y: 0.83, w: 0.9, h: 0.78,
-      fontSize: 38, bold: true, color: card.color, fontFace: "Calibri", valign: "middle"
+  summary.forEach(function(item, i) {
+    var x = 0.35 + i * 3.12;
+    card(s, x, 0.78, 2.95, 0.88, { shadow: true, border: item.soft, borderPt: 1, accentLeft: item.color });
+    s.addText(String(item.count), {
+      x: x + 0.22, y: 0.81, w: 0.88, h: 0.82,
+      fontSize: 40, bold: true, color: item.color, fontFace: "Calibri", valign: "middle"
     });
-    s.addText(card.label, {
-      x: x + 1.2, y: 0.85, w: 1.6, h: 0.4,
+    s.addText(item.label, {
+      x: x + 1.18, y: 0.83, w: 1.65, h: 0.38,
       fontSize: 11, color: C.muted, fontFace: "Calibri", valign: "middle"
     });
     s.addText("個專案", {
-      x: x + 1.2, y: 1.2, w: 1.6, h: 0.4,
+      x: x + 1.18, y: 1.18, w: 1.65, h: 0.38,
       fontSize: 14, bold: true, color: C.text, fontFace: "Calibri", valign: "middle"
     });
   });
 
-  // 主表格：每專案一行（最關鍵）
-  const TABLE_X = 0.3, TABLE_Y = 1.95, TABLE_W = 9.4;
-  const COLS = [0.5, 1.7, 0.85, 1.55, 1.2, 0.95, 2.65];  // 燈號|專案|完成%|進度條|預估完工|偏差|主要關鍵
-
-  // 表頭
-  const headers = ["", "專案", "完成", "進度", "預估完工", "偏差", "主要關鍵"];
-  let cx = TABLE_X;
-  headers.forEach((h, i) => {
-    s.addShape("rect", { x: cx, y: TABLE_Y, w: COLS[i], h: 0.32, fill: { color: C.navy }, line: { color: C.navy } });
+  var TX = 0.3, TY = 1.88, TW = 9.4;
+  var COLS = [0.48, 1.72, 0.82, 1.52, 1.22, 0.92, 2.72];
+  var HDRS = ["", "專案", "完成", "進度", "預估完工", "偏差", "主要關鍵"];
+  var cx = TX;
+  HDRS.forEach(function(h, i) {
+    s.addShape("rect", { x: cx, y: TY, w: COLS[i], h: 0.3, fill: { color: C.navy }, line: { color: C.navy } });
     s.addText(h, {
-      x: cx, y: TABLE_Y, w: COLS[i], h: 0.32,
-      fontSize: 9.5, bold: true, color: C.white, fontFace: "Calibri",
+      x: cx, y: TY, w: COLS[i], h: 0.3,
+      fontSize: 9, bold: true, color: C.white, fontFace: "Calibri",
       align: "center", valign: "middle", margin: 0
     });
     cx += COLS[i];
   });
 
-  // 每專案一行
-  const ROW_H = 0.55;
-  data.projects.forEach((p, i) => {
-    const y = TABLE_Y + 0.32 + i * ROW_H;
-    const rowBg = i % 2 === 0 ? C.white : C.paleBlue;
-    s.addShape("rect", { x: TABLE_X, y, w: TABLE_W, h: ROW_H, fill: { color: rowBg }, line: { color: C.divider, pt: 0.5 } });
+  var ROW_H = 0.54;
+  data.projects.forEach(function(p, i) {
+    var y = TY + 0.3 + i * ROW_H;
+    var rowBg = i % 2 === 0 ? C.white : C.paleBlue;
+    s.addShape("rect", { x: TX, y: y, w: TW, h: ROW_H, fill: { color: rowBg }, line: { color: C.divider, pt: 0.5 } });
 
-    let cx = TABLE_X;
-    const h = p.health;
-    const hColor = HEALTH_COLOR[h.level];
+    var rcx = TX;
+    var h = p.health;
+    var hColor = HEALTH_COLOR[h.level];
 
-    // 1. 燈號 (圓圈)
     s.addShape("ellipse", {
-      x: cx + (COLS[0] - 0.32) / 2, y: y + (ROW_H - 0.32) / 2, w: 0.32, h: 0.32,
+      x: rcx + (COLS[0] - 0.3) / 2, y: y + (ROW_H - 0.3) / 2, w: 0.3, h: 0.3,
       fill: { color: hColor }, line: { color: hColor }
     });
-    cx += COLS[0];
+    rcx += COLS[0];
 
-    // 2. 專案名 + 負責人
     s.addText(p.name, {
-      x: cx + 0.1, y: y + 0.05, w: COLS[1] - 0.1, h: 0.28,
-      fontSize: 11.5, bold: true, color: C.text, fontFace: "Calibri", valign: "middle"
+      x: rcx + 0.08, y: y + 0.05, w: COLS[1] - 0.1, h: 0.27,
+      fontSize: 11, bold: true, color: C.text, fontFace: "Calibri", valign: "middle"
     });
-    s.addText(`${p.owner} · ${HEALTH_LABEL[h.level]}`, {
-      x: cx + 0.1, y: y + 0.3, w: COLS[1] - 0.1, h: 0.22,
-      fontSize: 9, color: hColor, fontFace: "Calibri", valign: "middle"
+    s.addText(p.owner + " · " + HEALTH_LABEL[h.level], {
+      x: rcx + 0.08, y: y + 0.3, w: COLS[1] - 0.1, h: 0.2,
+      fontSize: 8.5, color: hColor, fontFace: "Calibri"
     });
-    cx += COLS[1];
+    rcx += COLS[1];
 
-    // 3. 完成%
-    s.addText(`${h.donePct}%`, {
-      x: cx, y: y, w: COLS[2], h: ROW_H,
-      fontSize: 18, bold: true, color: C.text, fontFace: "Calibri",
-      align: "center", valign: "middle"
+    s.addText(h.donePct + "%", {
+      x: rcx, y: y, w: COLS[2], h: ROW_H,
+      fontSize: 17, bold: true, color: C.text, fontFace: "Calibri", align: "center", valign: "middle"
     });
-    cx += COLS[2];
+    rcx += COLS[2];
 
-    // 4. 進度條 (含時間經過虛線標示)
-    const barX = cx + 0.1, barW = COLS[3] - 0.2, barY = y + ROW_H/2 - 0.08;
-    progressBar(s, barX, barY, barW, 0.16, h.donePct, hColor);
-    // 時間經過刻度
-    const elapsedX = barX + barW * h.elapsedPct / 100;
-    s.addShape("rect", {
-      x: elapsedX - 0.01, y: barY - 0.04, w: 0.02, h: 0.24,
-      fill: { color: C.text }, line: { color: C.text }
+    var bX = rcx + 0.1, bW = COLS[3] - 0.2, bY = y + ROW_H / 2 - 0.07;
+    progressBar(s, bX, bY, bW, 0.14, h.donePct, hColor);
+    var tickX = bX + bW * Math.min(100, h.elapsedPct) / 100;
+    s.addShape("rect", { x: tickX - 0.01, y: bY - 0.04, w: 0.02, h: 0.22, fill: { color: C.text }, line: { color: C.text } });
+    s.addText("已過 " + h.elapsedPct + "%", {
+      x: bX, y: y + ROW_H - 0.17, w: bW, h: 0.15,
+      fontSize: 7, color: C.muted, fontFace: "Calibri", align: "center"
     });
-    s.addText(`已過 ${h.elapsedPct}%`, {
-      x: barX, y: y + ROW_H - 0.18, w: barW, h: 0.16,
+    rcx += COLS[3];
+
+    s.addText(h.forecastEnd || "—", {
+      x: rcx, y: y + 0.05, w: COLS[4], h: 0.27,
+      fontSize: 10, bold: true, color: C.text, fontFace: "Calibri", align: "center", valign: "middle"
+    });
+    s.addText("目標 " + p.targetDate, {
+      x: rcx, y: y + 0.3, w: COLS[4], h: 0.2,
       fontSize: 7.5, color: C.muted, fontFace: "Calibri", align: "center"
     });
-    cx += COLS[3];
+    rcx += COLS[4];
 
-    // 5. 預估完工
-    s.addText(h.forecastEnd || "—", {
-      x: cx, y: y + 0.05, w: COLS[4], h: 0.28,
-      fontSize: 10.5, bold: true, color: C.text, fontFace: "Calibri",
-      align: "center", valign: "middle"
-    });
-    s.addText(`目標 ${p.targetDate}`, {
-      x: cx, y: y + 0.3, w: COLS[4], h: 0.22,
-      fontSize: 8, color: C.muted, fontFace: "Calibri", align: "center"
-    });
-    cx += COLS[4];
-
-    // 6. 偏差天數
-    let driftTxt, driftColor;
-    if (h.forecastDrift > 0) { driftTxt = `+${h.forecastDrift} 天`; driftColor = C.red; }
-    else if (h.forecastDrift < 0) { driftTxt = `${h.forecastDrift} 天`; driftColor = C.green; }
-    else { driftTxt = "準時"; driftColor = C.muted; }
+    var driftTxt, driftColor;
+    if (h.forecastDrift > 0)      { driftTxt = "+" + h.forecastDrift + " 天"; driftColor = C.red; }
+    else if (h.forecastDrift < 0) { driftTxt = h.forecastDrift + " 天";       driftColor = C.green; }
+    else                          { driftTxt = "準時";                        driftColor = C.muted; }
     s.addText(driftTxt, {
-      x: cx, y, w: COLS[5], h: ROW_H,
-      fontSize: 13, bold: true, color: driftColor, fontFace: "Calibri",
-      align: "center", valign: "middle"
+      x: rcx, y: y, w: COLS[5], h: ROW_H,
+      fontSize: 12, bold: true, color: driftColor, fontFace: "Calibri", align: "center", valign: "middle"
     });
-    cx += COLS[5];
+    rcx += COLS[5];
 
-    // 7. 主要關鍵 (取第一個高優先決策)
-    const projDecisions = (data.decisions || []).filter(d => d.project === p.name);
-    let keyText = "進度正常";
-    let keyColor = C.green;
-    if (projDecisions.length > 0) {
-      keyText = projDecisions[0].issue;
-      keyColor = projDecisions[0].severity === "高" ? C.red : C.amber;
-    }
+    var projDec = (data.decisions || []).filter(function(d) { return d.project === p.name; });
+    var keyText  = projDec.length > 0 ? projDec[0].issue : "進度正常";
+    var keyColor = projDec.length > 0
+      ? (projDec[0].severity === "高" ? C.red : C.amber)
+      : C.green;
     s.addText(keyText, {
-      x: cx + 0.1, y, w: COLS[6] - 0.2, h: ROW_H,
-      fontSize: 9.5, color: keyColor, fontFace: "Calibri",
-      valign: "middle", italic: keyText === "進度正常"
+      x: rcx + 0.1, y: y, w: COLS[6] - 0.2, h: ROW_H,
+      fontSize: 9, color: keyColor, fontFace: "Calibri",
+      valign: "middle", italic: projDec.length === 0
     });
   });
 
-  // 底部提示
-  const tableEnd = TABLE_Y + 0.32 + data.projects.length * ROW_H + 0.15;
-  s.addText(`需主管裁示事項：${data.stats.decisionCount} 件　·　詳見後續頁面`, {
-    x: 0.3, y: tableEnd, w: 9.4, h: 0.3,
-    fontSize: 10, color: C.muted, fontFace: "Calibri", italic: true
+  var tableEnd = TY + 0.3 + data.projects.length * ROW_H + 0.12;
+  s.addText("需主管裁示事項：" + data.stats.decisionCount + " 件　·　詳見後續頁面", {
+    x: 0.3, y: tableEnd, w: 9.4, h: 0.28,
+    fontSize: 9.5, color: C.muted, fontFace: "Calibri", italic: true
   });
 }
 
-// ── Slide 3: Portfolio Dashboard (任務狀態總覽) ────────
+// ══════════════════════════════════════════════════════
+// Slide 3: Portfolio Dashboard
+// ══════════════════════════════════════════════════════
 {
   const s = pres.addSlide();
   s.background = { color: C.bg };
-  slideHeader(s, "Portfolio Dashboard", `任務統計 ｜ ${data.reportDate}`);
+  slideHeader(s, "Portfolio Dashboard", "任務統計 ｜ " + data.reportDate);
 
-  // KPI 卡片區 (5 張)
-  const stats = data.stats;
-  const cards = [
-    { label: "專案總數",     value: stats.totalProjects, color: C.navy },
-    { label: "總任務數",     value: stats.totalTasks,    color: C.blue },
-    { label: "已完成",       value: stats.doneTasks,     color: C.green },
-    { label: "進行中",       value: stats.inProgressTasks, color: C.blue },
-    { label: "風險 / 延遲",  value: stats.riskTasks,     color: C.red },
+  var stats = data.stats;
+  var kpiCards = [
+    { label: "專案總數",    value: stats.totalProjects,   color: C.navy  },
+    { label: "總任務數",    value: stats.totalTasks,      color: C.blue  },
+    { label: "已完成",      value: stats.doneTasks,       color: C.green },
+    { label: "進行中",      value: stats.inProgressTasks, color: C.blue  },
+    { label: "風險 / 延遲", value: stats.riskTasks,       color: C.red   },
   ];
-  cards.forEach((card, i) => {
-    const x = 0.4 + i * 1.86;
-    s.addShape("rect", { x, y: 0.85, w: 1.7, h: 1.1, fill: { color: C.white }, line: { color: C.lightBlue }, shadow: makeShadow() });
-    s.addShape("rect", { x, y: 0.85, w: 1.7, h: 0.06, fill: { color: card.color }, line: { color: card.color } });
-    s.addText(String(card.value), {
-      x, y: 0.95, w: 1.7, h: 0.6, fontSize: 32, bold: true, color: card.color,
+  kpiCards.forEach(function(kc, i) {
+    var x = 0.35 + i * 1.86;
+    card(s, x, 0.82, 1.7, 1.08, { shadow: true });
+    s.addShape("rect", { x: x, y: 0.82, w: 1.7, h: 0.06, fill: { color: kc.color }, line: { color: kc.color } });
+    s.addText(String(kc.value), {
+      x: x, y: 0.93, w: 1.7, h: 0.6, fontSize: 34, bold: true, color: kc.color,
       fontFace: "Calibri", align: "center", valign: "middle"
     });
-    s.addText(card.label, {
-      x, y: 1.55, w: 1.7, h: 0.32, fontSize: 10, color: C.muted, fontFace: "Calibri", align: "center"
+    s.addText(kc.label, {
+      x: x, y: 1.58, w: 1.7, h: 0.28, fontSize: 10, color: C.muted, fontFace: "Calibri", align: "center"
     });
   });
 
-  // 環形圖 - 整體完成率
-  const doneRate = stats.totalTasks > 0 ? Math.round(stats.doneTasks / stats.totalTasks * 100) : 0;
+  var doneRate = stats.totalTasks > 0 ? Math.round(stats.doneTasks / stats.totalTasks * 100) : 0;
   s.addChart(pres.charts.DOUGHNUT, [{
     name: "完成率", labels: ["已完成", "未完成"],
     values: [stats.doneTasks, stats.totalTasks - stats.doneTasks]
   }], {
-    x: 0.3, y: 2.2, w: 3.2, h: 3.0,
+    x: 0.3, y: 2.1, w: 3.2, h: 3.2,
     chartColors: [C.green, "E8EEF4"],
     showLegend: true, legendPos: "b", legendFontSize: 10, legendColor: C.muted,
     holeSize: 60,
     chartArea: { fill: { color: C.bg } },
-    showTitle: true, title: `整體完成率 ${doneRate}%`,
+    showTitle: true, title: "整體完成率 " + doneRate + "%",
     titleFontSize: 13, titleColor: C.navy,
   });
 
-  // 各專案任務狀態 - 堆疊橫條
-  const labels = data.projects.map(p => p.name);
-  const dataDone   = data.projects.map(p => p.doneTasks);
-  const dataInProg = data.projects.map(p => p.inProgressTasks);
-  const dataRisk   = data.projects.map(p => p.riskTasks);
-  const dataNS     = data.projects.map(p => p.notStartedTasks);
+  var labels   = data.projects.map(function(p) { return p.name; });
+  var dataDone = data.projects.map(function(p) { return p.doneTasks; });
+  var dataInP  = data.projects.map(function(p) { return p.inProgressTasks; });
+  var dataRisk = data.projects.map(function(p) { return p.riskTasks; });
+  var dataNS   = data.projects.map(function(p) { return p.notStartedTasks; });
 
   s.addChart(pres.charts.BAR, [
-    { name: "已完成", labels, values: dataDone },
-    { name: "進行中", labels, values: dataInProg },
-    { name: "風險/延遲", labels, values: dataRisk },
-    { name: "待開始", labels, values: dataNS },
+    { name: "已完成",    labels: labels, values: dataDone },
+    { name: "進行中",    labels: labels, values: dataInP  },
+    { name: "風險/延遲", labels: labels, values: dataRisk },
+    { name: "待開始",    labels: labels, values: dataNS   },
   ], {
-    x: 3.7, y: 2.1, w: 6.0, h: 3.2,
+    x: 3.65, y: 2.0, w: 6.0, h: 3.3,
     barDir: "bar", barGrouping: "stacked",
     chartColors: [C.green, C.blue, C.red, "B0BEC5"],
     showLegend: true, legendPos: "b", legendFontSize: 10,
@@ -333,290 +326,468 @@ pres.title  = "專案管理報告";
     valGridLine: { color: C.divider, size: 0.5 }, catGridLine: { style: "none" },
     chartArea: { fill: { color: C.white }, roundedCorners: true },
     showTitle: true, title: "各專案任務分佈",
-    titleFontSize: 13, titleColor: C.navy,
-    shadow: makeShadow()
+    titleFontSize: 13, titleColor: C.navy, shadow: makeShadow()
   });
 }
 
-// ── Slide 4~N: 每專案一頁 (壓縮版) ─────────────────────
-data.projects.forEach((proj) => {
-  const s = pres.addSlide();
-  s.background = { color: C.bg };
-  const h = proj.health;
-  const hColor = HEALTH_COLOR[h.level];
-  slideHeader(s, proj.name, `${proj.owner} ｜ ${proj.startDate} ～ ${proj.targetDate}`);
+// ══════════════════════════════════════════════════════
+// Slides 4~N: 每專案 2 頁
+// ══════════════════════════════════════════════════════
+data.projects.forEach(function(proj) {
+  var h       = proj.health;
+  var hColor  = HEALTH_COLOR[h.level];
+  var hSoft   = HEALTH_SOFT[h.level];
+  var projDec = (data.decisions || []).filter(function(d) { return d.project === proj.name; });
 
-  // ─── 上半段: 健康度大卡 (左) + 里程碑時間軸 (右)
+  // ─────────────────────────────────────────────────
+  // Page A: 專案概況
+  // ─────────────────────────────────────────────────
+  {
+    var s = pres.addSlide();
+    s.background = { color: C.bg };
+    slideHeader(s, proj.name, proj.owner + " ｜ " + proj.startDate + " ～ " + proj.targetDate, "概況  1 / 2");
 
-  // 左：健康度卡
-  s.addShape("rect", {
-    x: 0.3, y: 0.8, w: 3.0, h: 2.05,
-    fill: { color: C.white }, line: { color: C.lightBlue }, shadow: makeShadow()
-  });
-  s.addShape("rect", { x: 0.3, y: 0.8, w: 0.1, h: 2.05, fill: { color: hColor }, line: { color: hColor } });
+    var LX = 0.25, LY = 0.75, LW = 3.1;
 
-  // 燈號 + 標籤
-  s.addShape("ellipse", { x: 0.55, y: 0.95, w: 0.32, h: 0.32, fill: { color: hColor }, line: { color: hColor } });
-  s.addText(HEALTH_LABEL[h.level], {
-    x: 0.95, y: 0.95, w: 1.5, h: 0.32,
-    fontSize: 16, bold: true, color: hColor, fontFace: "Calibri", valign: "middle"
-  });
+    // ── 健康度卡
+    card(s, LX, LY, LW, 1.42, { shadow: true, accentLeft: hColor });
+    s.addShape("ellipse", { x: LX + 0.22, y: LY + 0.22, w: 0.28, h: 0.28, fill: { color: hColor }, line: { color: hColor } });
+    s.addText(HEALTH_LABEL[h.level], {
+      x: LX + 0.6, y: LY + 0.18, w: 1.4, h: 0.36,
+      fontSize: 18, bold: true, color: hColor, fontFace: "Calibri", valign: "middle"
+    });
+    // 完成度：取整數、字型縮小、%留在同一行
+    s.addText(Math.round(h.donePct) + "%", {
+      x: LX + 0.12, y: LY + 0.52, w: 1.3, h: 0.46,
+      fontSize: 28, bold: true, color: C.text, fontFace: "Calibri", valign: "middle"
+    });
+    s.addText("任務完成", {
+      x: LX + 0.12, y: LY + 0.98, w: 1.1, h: 0.2,
+      fontSize: 8.5, color: C.muted, fontFace: "Calibri"
+    });
 
-  // 完成度大字
-  s.addText(`${h.donePct}%`, {
-    x: 0.5, y: 1.35, w: 1.5, h: 0.6,
-    fontSize: 36, bold: true, color: C.text, fontFace: "Calibri", valign: "middle"
-  });
-  s.addText("已完成", {
-    x: 0.5, y: 1.95, w: 1.5, h: 0.22,
-    fontSize: 9.5, color: C.muted, fontFace: "Calibri"
-  });
+    // 進度條（放右側，y 對齊中間）
+    var pbarX = LX + 1.45, pbarY = LY + 0.60, pbarW = LW - 1.62, pbarH = 0.13;
+    s.addText("完成率", { x: pbarX, y: pbarY - 0.19, w: pbarW, h: 0.16, fontSize: 7.5, color: C.muted, fontFace: "Calibri" });
+    progressBar(s, pbarX, pbarY, pbarW, pbarH, h.donePct, hColor);
+    var tickX = pbarX + pbarW * Math.min(100, h.elapsedPct) / 100;
+    s.addShape("rect", { x: tickX - 0.01, y: pbarY - 0.04, w: 0.02, h: pbarH + 0.08, fill: { color: C.text }, line: { color: C.text } });
+    s.addText(Math.round(h.donePct) + "%", { x: pbarX, y: pbarY + 0.16, w: pbarW * 0.5, h: 0.16, fontSize: 7.5, bold: true, color: hColor, fontFace: "Calibri" });
+    s.addText("時間已過 " + h.elapsedPct + "%", { x: pbarX + pbarW * 0.5, y: pbarY + 0.16, w: pbarW * 0.5, h: 0.16, fontSize: 7.5, color: C.muted, fontFace: "Calibri", align: "right" });
 
-  // 預估完工
-  s.addText("預估完工", {
-    x: 1.95, y: 1.35, w: 1.3, h: 0.22,
-    fontSize: 9.5, color: C.muted, fontFace: "Calibri"
-  });
-  s.addText(h.forecastEnd || "—", {
-    x: 1.95, y: 1.55, w: 1.3, h: 0.32,
-    fontSize: 13, bold: true, color: C.text, fontFace: "Calibri"
-  });
-  let driftTxt = "準時", driftColor = C.muted;
-  if (h.forecastDrift > 0)      { driftTxt = `落後 ${h.forecastDrift} 天`; driftColor = C.red; }
-  else if (h.forecastDrift < 0) { driftTxt = `提前 ${-h.forecastDrift} 天`; driftColor = C.green; }
-  s.addText(driftTxt, {
-    x: 1.95, y: 1.88, w: 1.3, h: 0.22,
-    fontSize: 10, bold: true, color: driftColor, fontFace: "Calibri"
-  });
-
-  // 進度條
-  const pbarX = 0.5, pbarY = 2.35, pbarW = 2.65, pbarH = 0.18;
-  progressBar(s, pbarX, pbarY, pbarW, pbarH, h.donePct, hColor);
-  const epX = pbarX + pbarW * h.elapsedPct / 100;
-  s.addShape("rect", { x: epX - 0.01, y: pbarY - 0.04, w: 0.02, h: pbarH + 0.08, fill: { color: C.text }, line: { color: C.text } });
-  s.addText(`時間已過 ${h.elapsedPct}%`, {
-    x: pbarX, y: pbarY + 0.25, w: pbarW, h: 0.2,
-    fontSize: 8, color: C.muted, fontFace: "Calibri", align: "center"
-  });
-
-  // 右：里程碑時間軸
-  s.addShape("rect", {
-    x: 3.5, y: 0.8, w: 6.2, h: 2.05,
-    fill: { color: C.white }, line: { color: C.lightBlue }, shadow: makeShadow()
-  });
-  s.addText("里程碑", {
-    x: 3.65, y: 0.85, w: 5.9, h: 0.3,
-    fontSize: 12, bold: true, color: C.navy, fontFace: "Calibri"
-  });
-
-  if (proj.milestones.length > 0) {
-    const ms = proj.milestones;
-    const allDates = ms.flatMap(m => [new Date(m.startDate), new Date(m.endDate)]);
-    const minD = new Date(Math.min(...allDates));
-    const maxD = new Date(Math.max(...allDates));
-    const totalD = (maxD - minD) / 86400000 || 1;
-    const TX = 3.65, TW = 5.9, TY = 1.2;
-
-    // 軸線
-    s.addShape("rect", { x: TX, y: TY + 0.3, w: TW, h: 0.02, fill: { color: C.divider }, line: { color: C.divider } });
-
-    // 今日標記
-    const today = new Date();
-    if (today >= minD && today <= maxD) {
-      const todayX = TX + (today - minD) / 86400000 / totalD * TW;
-      s.addShape("rect", { x: todayX - 0.01, y: TY + 0.18, w: 0.02, h: 1.4, fill: { color: C.accent }, line: { color: C.accent } });
-      s.addText("今日", { x: todayX - 0.25, y: TY + 1.55, w: 0.5, h: 0.18, fontSize: 7.5, color: C.accent, bold: true, fontFace: "Calibri", align: "center" });
+    // ── 預估完工卡
+    var fcY = LY + 1.55;
+    card(s, LX, fcY, LW, 0.88, { shadow: true });
+    s.addText("預估完工", { x: LX + 0.15, y: fcY + 0.08, w: 1.2, h: 0.22, fontSize: 9, color: C.muted, fontFace: "Calibri" });
+    s.addText(h.forecastEnd || proj.targetDate, {
+      x: LX + 0.15, y: fcY + 0.27, w: 1.7, h: 0.32,
+      fontSize: 16, bold: true, color: C.text, fontFace: "Calibri", valign: "middle"
+    });
+    var driftTxt = "準時", driftColor = C.muted;
+    if (h.forecastDrift > 0)      { driftTxt = "落後 " + h.forecastDrift + " 天"; driftColor = C.red; }
+    else if (h.forecastDrift < 0) { driftTxt = "提前 " + (-h.forecastDrift) + " 天"; driftColor = C.green; }
+    s.addText(driftTxt, { x: LX + 0.15, y: fcY + 0.6, w: 1.7, h: 0.22, fontSize: 11, bold: true, color: driftColor, fontFace: "Calibri" });
+    s.addText("目標　" + proj.targetDate, {
+      x: LX + 1.9, y: fcY + 0.08, w: 1.08, h: 0.22,
+      fontSize: 8.5, color: C.muted, fontFace: "Calibri", align: "right"
+    });
+    var biasBarX = LX + 1.9, biasBarY = fcY + 0.36, biasBarW = 1.0, biasBarH = 0.12;
+    s.addShape("roundRect", { x: biasBarX, y: biasBarY, w: biasBarW, h: biasBarH, fill: { color: C.divider }, line: { color: C.divider }, rectRadius: 0.02 });
+    var biasRatio = Math.min(1.0, Math.abs(h.forecastDrift) / 90);
+    if (biasRatio > 0.01) {
+      s.addShape("roundRect", { x: biasBarX, y: biasBarY, w: biasBarW * biasRatio, h: biasBarH, fill: { color: driftColor }, line: { color: driftColor }, rectRadius: 0.02 });
     }
 
-    // 里程碑長條
-    ms.forEach((m, i) => {
-      const x1 = TX + (new Date(m.startDate) - minD) / 86400000 / totalD * TW;
-      const x2 = TX + (new Date(m.endDate)   - minD) / 86400000 / totalD * TW;
-      const w  = Math.max(0.25, x2 - x1);
-      const color = STATUS_COLOR[m.status] || C.blue;
+    // ── 任務統計
+    var statsY = fcY + 1.02;
+    card(s, LX, statsY, LW, 0.75, { shadow: true });
+    var statItems = [
+      { label: "總任務", val: proj.totalTasks,      color: C.navy  },
+      { label: "完成",   val: proj.doneTasks,       color: C.green },
+      { label: "進行中", val: proj.inProgressTasks, color: C.blue  },
+      { label: "風險",   val: proj.riskTasks,       color: C.red   },
+      { label: "待開始", val: proj.notStartedTasks, color: C.muted },
+    ];
+    var boxW = LW / statItems.length;
+    statItems.forEach(function(st, i) {
+      var bx = LX + i * boxW;
+      if (i > 0) s.addShape("rect", { x: bx, y: statsY + 0.1, w: 0.01, h: 0.55, fill: { color: C.divider }, line: { color: C.divider } });
+      s.addText(String(st.val), {
+        x: bx, y: statsY + 0.08, w: boxW, h: 0.38,
+        fontSize: 22, bold: true, color: st.color, fontFace: "Calibri", align: "center", valign: "middle"
+      });
+      s.addText(st.label, {
+        x: bx, y: statsY + 0.48, w: boxW, h: 0.2,
+        fontSize: 8, color: C.muted, fontFace: "Calibri", align: "center"
+      });
+    });
 
-      // 條
-      s.addShape("roundRect", {
-        x: x1, y: TY + 0.22, w, h: 0.18,
-        fill: { color }, line: { color }, rectRadius: 0.04
-      });
-      // 名稱 (上方交錯顯示，避免重疊)
-      const labelY = i % 2 === 0 ? TY + 0.45 : TY + 0.65;
-      s.addText(m.name, {
-        x: x1 - 0.3, y: labelY, w: w + 0.6, h: 0.22,
-        fontSize: 8, bold: true, color: C.text, fontFace: "Calibri", align: "center"
-      });
-      s.addText(`${m.progress}%`, {
-        x: x1 - 0.3, y: labelY + 0.2, w: w + 0.6, h: 0.18,
-        fontSize: 7.5, color, fontFace: "Calibri", align: "center", bold: true
+    // ── 階段目標
+    var stageY = statsY + 0.89;
+    card(s, LX, stageY, LW, 0.52, { fill: C.paleBlue, border: C.lightBlue });
+    s.addText("階段目標", { x: LX + 0.12, y: stageY + 0.05, w: 0.7, h: 0.18, fontSize: 8, color: C.muted, fontFace: "Calibri" });
+    s.addText(proj.stage || "—", {
+      x: LX + 0.12, y: stageY + 0.22, w: LW - 0.22, h: 0.26,
+      fontSize: 9.5, color: C.text, fontFace: "Calibri", valign: "middle"
+    });
+
+    // ── 里程碑甘特（右側）
+    var GCX = LX + LW + 0.2, GCY = LY, GCW = 10 - GCX - 0.25, GCH = 4.52;
+    card(s, GCX, GCY, GCW, GCH, { shadow: true });
+    s.addShape("rect", { x: GCX, y: GCY, w: GCW, h: 0.34, fill: { color: C.navy }, line: { color: C.navy } });
+    s.addText("里程碑進度", {
+      x: GCX + 0.15, y: GCY, w: 2.5, h: 0.34,
+      fontSize: 11, bold: true, color: C.white, fontFace: "Calibri", valign: "middle"
+    });
+
+    // 圖例（固定位置，避免文字框太窄變直排）
+    var legendDefs = [
+      { label: "計畫範圍", color: C.divider, x: GCX + GCW - 2.38 },
+      { label: "完成進度", color: hColor,    x: GCX + GCW - 1.62 },
+      { label: "今日",     color: C.accent,  x: GCX + GCW - 0.82 },
+    ];
+    legendDefs.forEach(function(lg) {
+      s.addShape("rect", { x: lg.x, y: GCY + 0.11, w: 0.14, h: 0.12, fill: { color: lg.color }, line: { color: lg.color } });
+      s.addText(lg.label, {
+        x: lg.x + 0.18, y: GCY + 0.08, w: 0.6, h: 0.18,
+        fontSize: 7.5, color: C.white, fontFace: "Calibri", valign: "middle"
       });
     });
-  } else {
-    s.addText("（無里程碑資料）", {
-      x: 3.65, y: 1.5, w: 5.9, h: 0.4,
-      fontSize: 11, color: C.muted, italic: true, fontFace: "Calibri", align: "center"
-    });
+
+    if (proj.milestones && proj.milestones.length > 0) {
+      var ms = proj.milestones;
+      var allDates = [];
+      ms.forEach(function(m) { allDates.push(new Date(m.startDate)); allDates.push(new Date(m.endDate)); });
+      var minD   = new Date(Math.min.apply(null, allDates));
+      var maxD   = new Date(Math.max.apply(null, allDates));
+      var totalD = (maxD - minD) / 86400000 || 1;
+
+      var LABEL_W  = 1.62;          // 名稱欄寬（含%）
+      var PCT_W    = 0.38;           // %欄寬（固定在名稱欄右側）
+      var GX       = GCX + LABEL_W;
+      var GW       = GCW - LABEL_W - 0.12;
+      var GY_HDR   = GCY + 0.34;
+      var GY_START = GY_HDR + 0.24;
+      var MAX_MS   = Math.min(ms.length, 10);   // 最多顯示 10 筆
+      var ROW_AVAIL = GCH - 0.34 - 0.24 - 0.22;
+      var ROW_H_MS  = Math.min(0.52, Math.max(0.29, ROW_AVAIL / MAX_MS));
+
+      // 月份刻度
+      var cur = new Date(minD);
+      cur.setDate(1);
+      while (cur <= maxD) {
+        var lx = GX + (cur - minD) / 86400000 / totalD * GW;
+        if (lx >= GX - 0.02 && lx <= GX + GW) {
+          s.addShape("rect", { x: lx, y: GY_HDR, w: 0.01, h: GCH - 0.34 - 0.12, fill: { color: C.divider }, line: { color: C.divider } });
+          s.addText((cur.getMonth() + 1) + "月", {
+            x: lx + 0.03, y: GY_HDR + 0.02, w: 0.38, h: 0.2,
+            fontSize: 7, color: C.muted, fontFace: "Calibri"
+          });
+        }
+        cur.setMonth(cur.getMonth() + 1);
+      }
+
+      // 今日線
+      var today = new Date();
+      if (today >= minD && today <= maxD) {
+        var todayX = GX + (today - minD) / 86400000 / totalD * GW;
+        s.addShape("rect", {
+          x: todayX - 0.01, y: GY_HDR, w: 0.02, h: GCH - 0.34 - 0.25,
+          fill: { color: C.accent }, line: { color: C.accent }
+        });
+        s.addText("今日", {
+          x: todayX - 0.22, y: GCY + GCH - 0.28, w: 0.44, h: 0.2,
+          fontSize: 7, color: C.accent, bold: true, fontFace: "Calibri", align: "center"
+        });
+      }
+
+      // 各里程碑列（最多 MAX_MS 筆）
+      ms.slice(0, MAX_MS).forEach(function(m, i) {
+        var rowY  = GY_START + i * ROW_H_MS;
+        var barCY = rowY + ROW_H_MS / 2 - 0.065;
+        var color = STATUS_COLOR[m.status] || C.blue;
+        var rowBg = i % 2 === 0 ? C.white : C.paleBlue;
+
+        s.addShape("rect", { x: GCX, y: rowY, w: GCW, h: ROW_H_MS, fill: { color: rowBg }, line: { color: C.divider, pt: 0.3 } });
+
+        // 名稱（左側，保留%欄位置）
+        var nameFontSize = ROW_H_MS >= 0.38 ? 8.5 : 7.5;
+        s.addText(m.name, {
+          x: GCX + 0.1, y: rowY, w: LABEL_W - PCT_W - 0.12, h: ROW_H_MS,
+          fontSize: nameFontSize, bold: true, color: C.text, fontFace: "Calibri",
+          valign: "middle", shrinkText: true
+        });
+        // %數字（固定欄位，不擠壓名稱）
+        s.addText(m.progress + "%", {
+          x: GCX + LABEL_W - PCT_W, y: rowY, w: PCT_W - 0.05, h: ROW_H_MS,
+          fontSize: nameFontSize, bold: true, color: color, fontFace: "Calibri",
+          valign: "middle", align: "right"
+        });
+
+        var x1 = GX + (new Date(m.startDate) - minD) / 86400000 / totalD * GW;
+        var x2 = GX + (new Date(m.endDate)   - minD) / 86400000 / totalD * GW;
+        var bw  = Math.max(0.12, x2 - x1);
+        var barH = Math.min(0.15, ROW_H_MS * 0.48);
+
+        s.addShape("roundRect", { x: GX, y: barCY, w: GW, h: barH, fill: { color: C.divider }, line: { color: C.divider }, rectRadius: 0.02 });
+        var fillW = Math.max(0.05, bw * m.progress / 100);
+        s.addShape("roundRect", { x: x1, y: barCY, w: fillW, h: barH, fill: { color: color }, line: { color: color }, rectRadius: 0.02 });
+        s.addShape("roundRect", { x: x1, y: barCY, w: bw, h: barH, fill: { type: "none" }, line: { color: color, pt: 0.7 }, rectRadius: 0.02 });
+
+        // 任務數（bar 右側，空間夠才顯示）
+        if (x1 + bw + 0.08 < GX + GW - 0.3) {
+          s.addText(m.doneTasks + "/" + m.totalTasks, {
+            x: x1 + bw + 0.05, y: rowY, w: 0.45, h: ROW_H_MS,
+            fontSize: 7, color: C.muted, fontFace: "Calibri", valign: "middle"
+          });
+        }
+      });
+
+      // 若超過 10 筆，顯示省略提示
+      if (ms.length > MAX_MS) {
+        var moreY = GY_START + MAX_MS * ROW_H_MS + 0.04;
+        s.addText("…共 " + ms.length + " 個里程碑，僅顯示前 " + MAX_MS + " 筆", {
+          x: GCX + 0.15, y: moreY, w: GCW - 0.3, h: 0.2,
+          fontSize: 7.5, color: C.muted, italic: true, fontFace: "Calibri"
+        });
+      }
+    } else {
+      s.addText("（無里程碑資料）", {
+        x: GCX + 0.3, y: GCY + GCH / 2 - 0.2, w: GCW - 0.6, h: 0.4,
+        fontSize: 11, color: C.muted, italic: true, fontFace: "Calibri", align: "center"
+      });
+    }
   }
 
-  // ─── 下半段: 本期完成 (左) + 下期重點 (中) + Top 風險 (右)
-  const PANEL_Y = 2.95, PANEL_H = 2.55;
+  // ─────────────────────────────────────────────────
+  // Page B: 本期動態與風險
+  // ─────────────────────────────────────────────────
+  {
+    var s = pres.addSlide();
+    s.background = { color: C.bg };
+    slideHeader(s, proj.name + "　—　本期動態", "近 14 天回顧 ｜ " + data.reportDate, "動態  2 / 2");
 
-  function panel(x, w, title, color) {
-    s.addShape("rect", { x, y: PANEL_Y, w, h: PANEL_H, fill: { color: C.white }, line: { color: C.lightBlue }, shadow: makeShadow() });
-    s.addShape("rect", { x, y: PANEL_Y, w, h: 0.32, fill: { color }, line: { color } });
-    s.addText(title, {
-      x: x + 0.15, y: PANEL_Y, w: w - 0.3, h: 0.32,
-      fontSize: 11, bold: true, color: C.white, fontFace: "Calibri", valign: "middle", margin: 0
+    // ── KPI 條
+    var kpiY = 0.78, kpiH = 0.88;
+    var kpiItems = [
+      { label: "本期完成任務",      val: proj.activity.recentDone.length, color: C.green },
+      { label: "進行中 / 即將到期", val: proj.activity.upcoming.length,   color: C.blue  },
+      { label: "風險 / 需裁示",     val: projDec.length,                  color: C.red   },
+      { label: "待開始任務",        val: proj.notStartedTasks,            color: C.muted },
+    ];
+    var kpiW = 9.5 / kpiItems.length;
+    kpiItems.forEach(function(kc, i) {
+      var kx = 0.25 + i * kpiW;
+      card(s, kx, kpiY, kpiW - 0.15, kpiH, { shadow: true, accentLeft: kc.color });
+      s.addText(String(kc.val), {
+        x: kx + 0.2, y: kpiY + 0.08, w: 0.8, h: 0.55,
+        fontSize: 30, bold: true, color: kc.color, fontFace: "Calibri", valign: "middle"
+      });
+      s.addText(kc.label, {
+        x: kx + 1.05, y: kpiY + 0.28, w: kpiW - 1.3, h: 0.38,
+        fontSize: 9.5, color: C.muted, fontFace: "Calibri", valign: "middle"
+      });
     });
-  }
 
-  function listItems(x, w, items, formatter, emptyMsg) {
-    const startY = PANEL_Y + 0.42;
-    if (items.length === 0) {
-      s.addText(emptyMsg, {
-        x: x + 0.15, y: startY + 0.5, w: w - 0.3, h: 0.4,
+    // ── 三欄面板
+    var PANELY = kpiY + kpiH + 0.12;
+    var PANELH = 5.625 - PANELY - 0.22;
+    var COL_X  = [0.25, 3.4, 6.55];
+    var COL_W  = [3.0, 3.0, 3.2];
+
+    function makePanel(idx, title, color) {
+      var px = COL_X[idx], pw = COL_W[idx];
+      card(s, px, PANELY, pw, PANELH, { shadow: true });
+      s.addShape("rect", { x: px, y: PANELY, w: pw, h: 0.33, fill: { color: color }, line: { color: color } });
+      s.addText(title, {
+        x: px + 0.15, y: PANELY, w: pw - 0.3, h: 0.33,
+        fontSize: 10.5, bold: true, color: C.white, fontFace: "Calibri", valign: "middle", margin: 0
+      });
+    }
+
+    var ITEM_START_Y = PANELY + 0.43;
+    var ITEM_H       = 0.48;
+    var MAX_ITEMS    = Math.floor((PANELH - 0.43 - 0.15) / ITEM_H);
+
+    // 左欄：近14天完成
+    makePanel(0, "近 14 天完成（" + proj.activity.recentDone.length + "）", C.green);
+    if (proj.activity.recentDone.length === 0) {
+      s.addText("本期無完成任務", {
+        x: COL_X[0] + 0.15, y: ITEM_START_Y + 0.5, w: COL_W[0] - 0.3, h: 0.35,
         fontSize: 10, italic: true, color: C.muted, fontFace: "Calibri", align: "center"
       });
-      return;
+    } else {
+      proj.activity.recentDone.slice(0, MAX_ITEMS).forEach(function(item, i) {
+        var iy = ITEM_START_Y + i * ITEM_H;
+        s.addShape("ellipse", { x: COL_X[0] + 0.18, y: iy + 0.1, w: 0.1, h: 0.1, fill: { color: C.green }, line: { color: C.green } });
+        s.addText(item.name, {
+          x: COL_X[0] + 0.35, y: iy, w: COL_W[0] - 0.5, h: 0.26,
+          fontSize: 9.5, bold: true, color: C.text, fontFace: "Calibri", valign: "middle"
+        });
+        s.addText(item.owner + " · " + item.date, {
+          x: COL_X[0] + 0.35, y: iy + 0.26, w: COL_W[0] - 0.5, h: 0.18,
+          fontSize: 8, color: C.muted, fontFace: "Calibri"
+        });
+      });
     }
-    items.slice(0, 5).forEach((item, i) => {
-      const y = startY + i * 0.4;
-      formatter(s, x, y, w, item);
+    var doneThisPeriod = proj.activity.recentDone.length;
+    s.addText("本期完成率　" + doneThisPeriod + "/" + proj.totalTasks + " = " + (proj.totalTasks > 0 ? Math.round(doneThisPeriod / proj.totalTasks * 100) : 0) + "%", {
+      x: COL_X[0] + 0.15, y: PANELY + PANELH - 0.28, w: COL_W[0] - 0.3, h: 0.22,
+      fontSize: 8, color: C.muted, fontFace: "Calibri", italic: true
     });
+
+    // 中欄：進行中 / 即將到期
+    makePanel(1, "進行中 / 即將到期（" + proj.activity.upcoming.length + "）", C.blue);
+    if (proj.activity.upcoming.length === 0) {
+      s.addText("目前無進行中任務", {
+        x: COL_X[1] + 0.15, y: ITEM_START_Y + 0.5, w: COL_W[1] - 0.3, h: 0.35,
+        fontSize: 10, italic: true, color: C.muted, fontFace: "Calibri", align: "center"
+      });
+    } else {
+      proj.activity.upcoming.slice(0, MAX_ITEMS).forEach(function(item, i) {
+        var iy = ITEM_START_Y + i * ITEM_H;
+        var stColor = STATUS_COLOR[item.status] || C.blue;
+        var isRisk  = item.status === "延遲" || item.status === "風險";
+        if (isRisk) {
+          s.addShape("rect", {
+            x: COL_X[1] + 0.1, y: iy - 0.03, w: COL_W[1] - 0.2, h: ITEM_H - 0.02,
+            fill: { color: C.redSoft }, line: { color: C.redSoft }
+          });
+        }
+        s.addShape("ellipse", { x: COL_X[1] + 0.18, y: iy + 0.1, w: 0.1, h: 0.1, fill: { color: stColor }, line: { color: stColor } });
+        s.addText(item.name, {
+          x: COL_X[1] + 0.35, y: iy, w: COL_W[1] - 0.5, h: 0.26,
+          fontSize: 9.5, bold: true, color: C.text, fontFace: "Calibri", valign: "middle"
+        });
+        s.addShape("roundRect", {
+          x: COL_X[1] + 0.35, y: iy + 0.28, w: 0.38, h: 0.16,
+          fill: { color: stColor }, line: { color: stColor }, rectRadius: 0.02
+        });
+        s.addText(item.status, {
+          x: COL_X[1] + 0.35, y: iy + 0.28, w: 0.38, h: 0.16,
+          fontSize: 7, bold: true, color: C.white, fontFace: "Calibri", align: "center", valign: "middle", margin: 0
+        });
+        s.addText(item.owner + " · 截止 " + item.date, {
+          x: COL_X[1] + 0.78, y: iy + 0.28, w: COL_W[1] - 0.93, h: 0.18,
+          fontSize: 8, color: C.muted, fontFace: "Calibri"
+        });
+      });
+    }
+
+    // 右欄：風險與裁示
+    makePanel(2, "風險議題（" + projDec.length + "）", C.red);
+    if (projDec.length === 0) {
+      s.addShape("roundRect", {
+        x: COL_X[2] + 0.3, y: ITEM_START_Y + 0.6, w: COL_W[2] - 0.6, h: 0.7,
+        fill: { color: C.greenSoft }, line: { color: C.greenSoft }, rectRadius: 0.06
+      });
+      s.addText("✓  目前無風險議題", {
+        x: COL_X[2] + 0.3, y: ITEM_START_Y + 0.6, w: COL_W[2] - 0.6, h: 0.7,
+        fontSize: 12, bold: true, color: C.green, fontFace: "Calibri", align: "center", valign: "middle"
+      });
+    } else {
+      var RISK_ITEM_H = Math.min(0.9, (PANELH - 0.43 - 0.1) / Math.min(projDec.length, 4));
+      projDec.slice(0, 4).forEach(function(d, i) {
+        var iy       = ITEM_START_Y + i * RISK_ITEM_H;
+        var sevColor = d.severity === "高" ? C.red   : (d.severity === "中" ? C.amber   : C.muted);
+        var sevSoft  = d.severity === "高" ? C.redSoft : (d.severity === "中" ? C.amberSoft : C.divider);
+        var sevDeep  = d.severity === "高" ? C.redDeep : (d.severity === "中" ? C.amberDeep : C.text);
+
+        s.addShape("roundRect", {
+          x: COL_X[2] + 0.12, y: iy, w: COL_W[2] - 0.24, h: RISK_ITEM_H - 0.1,
+          fill: { color: sevSoft }, line: { color: sevColor, pt: 0.5 }, rectRadius: 0.05
+        });
+        s.addShape("rect", {
+          x: COL_X[2] + 0.12, y: iy, w: 0.08, h: RISK_ITEM_H - 0.1,
+          fill: { color: sevColor }, line: { color: sevColor }
+        });
+        s.addShape("roundRect", {
+          x: COL_X[2] + 0.26, y: iy + 0.07, w: 0.32, h: 0.18,
+          fill: { color: sevColor }, line: { color: sevColor }, rectRadius: 0.02
+        });
+        s.addText(d.severity, {
+          x: COL_X[2] + 0.26, y: iy + 0.07, w: 0.32, h: 0.18,
+          fontSize: 8, bold: true, color: C.white, fontFace: "Calibri", align: "center", valign: "middle", margin: 0
+        });
+        s.addText(d.owner, {
+          x: COL_X[2] + 0.62, y: iy + 0.07, w: COL_W[2] - 0.9, h: 0.18,
+          fontSize: 8, color: sevDeep, fontFace: "Calibri", valign: "middle"
+        });
+        s.addText(d.issue, {
+          x: COL_X[2] + 0.26, y: iy + 0.27, w: COL_W[2] - 0.5, h: 0.26,
+          fontSize: 9, bold: true, color: sevDeep, fontFace: "Calibri", valign: "middle"
+        });
+        s.addText("→ " + d.ask, {
+          x: COL_X[2] + 0.26, y: iy + 0.52, w: COL_W[2] - 0.5, h: 0.28,
+          fontSize: 8.5, color: sevColor, bold: true, fontFace: "Calibri", valign: "middle"
+        });
+      });
+    }
   }
-
-  // 左：本期完成
-  panel(0.3, 3.13, `近 14 天完成 (${proj.activity.recentDone.length})`, C.green);
-  listItems(0.3, 3.13, proj.activity.recentDone, (s, x, y, w, item) => {
-    s.addShape("ellipse", { x: x + 0.15, y: y + 0.1, w: 0.1, h: 0.1, fill: { color: C.green }, line: { color: C.green } });
-    s.addText(item.name, {
-      x: x + 0.32, y, w: w - 0.4, h: 0.22,
-      fontSize: 9.5, color: C.text, fontFace: "Calibri", valign: "middle"
-    });
-    s.addText(`${item.owner} · ${item.date}`, {
-      x: x + 0.32, y: y + 0.2, w: w - 0.4, h: 0.16,
-      fontSize: 8, color: C.muted, fontFace: "Calibri"
-    });
-  }, "本期無完成任務");
-
-  // 中：進行中 / 即將到期
-  panel(3.5, 3.13, `進行中 / 即將到期 (${proj.activity.upcoming.length})`, C.blue);
-  listItems(3.5, 3.13, proj.activity.upcoming, (s, x, y, w, item) => {
-    const stColor = STATUS_COLOR[item.status] || C.blue;
-    s.addShape("ellipse", { x: x + 0.15, y: y + 0.1, w: 0.1, h: 0.1, fill: { color: stColor }, line: { color: stColor } });
-    s.addText(item.name, {
-      x: x + 0.32, y, w: w - 0.4, h: 0.22,
-      fontSize: 9.5, color: C.text, fontFace: "Calibri", valign: "middle"
-    });
-    s.addText(`${item.owner} · ${item.status} · 截止 ${item.date}`, {
-      x: x + 0.32, y: y + 0.2, w: w - 0.4, h: 0.16,
-      fontSize: 8, color: C.muted, fontFace: "Calibri"
-    });
-  }, "目前無進行中任務");
-
-  // 右：Top 風險
-  const projDecisions = (data.decisions || []).filter(d => d.project === proj.name);
-  panel(6.7, 3.0, `風險議題 (${projDecisions.length})`, C.red);
-  listItems(6.7, 3.0, projDecisions, (s, x, y, w, item) => {
-    const sevColor = item.severity === "高" ? C.red : C.amber;
-    s.addShape("ellipse", { x: x + 0.15, y: y + 0.1, w: 0.1, h: 0.1, fill: { color: sevColor }, line: { color: sevColor } });
-    s.addText(item.issue, {
-      x: x + 0.32, y, w: w - 0.4, h: 0.22,
-      fontSize: 9, color: C.text, fontFace: "Calibri", valign: "middle", bold: true
-    });
-    s.addText(item.ask, {
-      x: x + 0.32, y: y + 0.2, w: w - 0.4, h: 0.16,
-      fontSize: 7.5, color: sevColor, fontFace: "Calibri", italic: true
-    });
-  }, "目前無風險議題");
 });
 
-// ── Slide N+1: 議題與決策需求 ──────────────────────────
+// ══════════════════════════════════════════════════════
+// Slide N+1: 需主管裁示事項
+// ══════════════════════════════════════════════════════
 {
-  const s = pres.addSlide();
+  var s = pres.addSlide();
   s.background = { color: C.bg };
-  slideHeader(s, "需主管裁示事項", `按嚴重度排序 ｜ ${data.decisions.length} 件`);
+  slideHeader(s, "需主管裁示事項", "按嚴重度排序 ｜ " + data.decisions.length + " 件");
 
   if (!data.decisions || data.decisions.length === 0) {
-    s.addShape("rect", {
-      x: 2, y: 1.8, w: 6, h: 1.4,
-      fill: { color: C.white }, line: { color: C.lightBlue }, shadow: makeShadow()
-    });
+    card(s, 2.5, 2.0, 5.0, 1.5, { shadow: true });
     s.addText("✓  目前無需裁示事項", {
-      x: 2, y: 1.8, w: 6, h: 1.4,
-      fontSize: 18, bold: true, color: C.green, fontFace: "Calibri",
-      align: "center", valign: "middle"
+      x: 2.5, y: 2.0, w: 5.0, h: 1.5,
+      fontSize: 18, bold: true, color: C.green, fontFace: "Calibri", align: "center", valign: "middle"
     });
   } else {
-    // 表頭
-    const HX = 0.3, HY = 0.85, HW = 9.4;
-    const COLW = [0.6, 1.4, 2.6, 2.4, 2.4];   // 嚴重度|專案|議題|影響|建議
-    let cx = HX;
-    ["", "專案", "議題", "影響評估", "建議行動"].forEach((h, i) => {
-      s.addShape("rect", { x: cx, y: HY, w: COLW[i], h: 0.36, fill: { color: C.navy }, line: { color: C.navy } });
-      s.addText(h, {
-        x: cx, y: HY, w: COLW[i], h: 0.36,
-        fontSize: 10.5, bold: true, color: C.white, fontFace: "Calibri",
+    var HX = 0.3, HY = 0.82, HW = 9.4;
+    var COLW = [0.55, 1.35, 2.65, 2.45, 2.4];
+    var HDRS = ["", "專案", "議題", "影響評估", "建議行動"];
+    var hcx = HX;
+    HDRS.forEach(function(hd, i) {
+      s.addShape("rect", { x: hcx, y: HY, w: COLW[i], h: 0.34, fill: { color: C.navy }, line: { color: C.navy } });
+      s.addText(hd, {
+        x: hcx, y: HY, w: COLW[i], h: 0.34,
+        fontSize: 10, bold: true, color: C.white, fontFace: "Calibri",
         align: "center", valign: "middle", margin: 0
       });
-      cx += COLW[i];
+      hcx += COLW[i];
     });
 
-    // 每筆決策
-    const RH = 0.75;
-    data.decisions.slice(0, 6).forEach((d, i) => {
-      const y = HY + 0.36 + i * RH;
-      const sevColor = d.severity === "高" ? C.red : (d.severity === "中" ? C.amber : C.muted);
-      const rowBg = i % 2 === 0 ? C.white : C.paleBlue;
-      s.addShape("rect", { x: HX, y, w: HW, h: RH, fill: { color: rowBg }, line: { color: C.divider, pt: 0.5 } });
+    var RH = 0.74;
+    data.decisions.slice(0, 6).forEach(function(d, i) {
+      var y = HY + 0.34 + i * RH;
+      var sevColor = d.severity === "高" ? C.red : (d.severity === "中" ? C.amber : C.muted);
+      var rowBg = i % 2 === 0 ? C.white : C.paleBlue;
+      s.addShape("rect", { x: HX, y: y, w: HW, h: RH, fill: { color: rowBg }, line: { color: C.divider, pt: 0.5 } });
 
-      let cx = HX;
-      // 嚴重度標
-      s.addShape("rect", { x: cx + 0.1, y: y + 0.15, w: COLW[0] - 0.2, h: RH - 0.3, fill: { color: sevColor }, line: { color: sevColor } });
+      var dcx = HX;
+      s.addShape("rect", { x: dcx + 0.08, y: y + 0.14, w: COLW[0] - 0.16, h: RH - 0.28, fill: { color: sevColor }, line: { color: sevColor } });
       s.addText(d.severity, {
-        x: cx + 0.1, y: y + 0.15, w: COLW[0] - 0.2, h: RH - 0.3,
-        fontSize: 14, bold: true, color: C.white, fontFace: "Calibri",
-        align: "center", valign: "middle", margin: 0
+        x: dcx + 0.08, y: y + 0.14, w: COLW[0] - 0.16, h: RH - 0.28,
+        fontSize: 13, bold: true, color: C.white, fontFace: "Calibri", align: "center", valign: "middle", margin: 0
       });
-      cx += COLW[0];
+      dcx += COLW[0];
 
-      // 專案
-      s.addText(d.project, {
-        x: cx + 0.08, y: y + 0.05, w: COLW[1] - 0.16, h: 0.32,
-        fontSize: 10, bold: true, color: C.text, fontFace: "Calibri", valign: "middle"
-      });
-      s.addText(`負責人 ${d.owner}`, {
-        x: cx + 0.08, y: y + 0.4, w: COLW[1] - 0.16, h: 0.28,
-        fontSize: 8.5, color: C.muted, fontFace: "Calibri"
-      });
-      cx += COLW[1];
+      s.addText(d.project, { x: dcx + 0.08, y: y + 0.06, w: COLW[1] - 0.14, h: 0.3, fontSize: 9.5, bold: true, color: C.text, fontFace: "Calibri", valign: "middle" });
+      s.addText("負責人 " + d.owner, { x: dcx + 0.08, y: y + 0.38, w: COLW[1] - 0.14, h: 0.28, fontSize: 8, color: C.muted, fontFace: "Calibri" });
+      dcx += COLW[1];
 
-      // 議題
-      s.addText(d.issue, {
-        x: cx + 0.1, y: y + 0.05, w: COLW[2] - 0.2, h: RH - 0.1,
-        fontSize: 10, color: C.text, fontFace: "Calibri", valign: "middle"
-      });
-      cx += COLW[2];
-
-      // 影響
-      s.addText(d.impact, {
-        x: cx + 0.1, y: y + 0.05, w: COLW[3] - 0.2, h: RH - 0.1,
-        fontSize: 9.5, color: C.muted, fontFace: "Calibri", valign: "middle", italic: true
-      });
-      cx += COLW[3];
-
-      // 建議
-      s.addText(d.ask, {
-        x: cx + 0.1, y: y + 0.05, w: COLW[4] - 0.2, h: RH - 0.1,
-        fontSize: 10, bold: true, color: sevColor, fontFace: "Calibri", valign: "middle"
-      });
+      s.addText(d.issue,  { x: dcx + 0.1, y: y + 0.06, w: COLW[2] - 0.2, h: RH - 0.12, fontSize: 9.5, color: C.text, fontFace: "Calibri", valign: "middle" });
+      dcx += COLW[2];
+      s.addText(d.impact, { x: dcx + 0.1, y: y + 0.06, w: COLW[3] - 0.2, h: RH - 0.12, fontSize: 9, color: C.muted, fontFace: "Calibri", valign: "middle", italic: true });
+      dcx += COLW[3];
+      s.addText(d.ask,    { x: dcx + 0.1, y: y + 0.06, w: COLW[4] - 0.2, h: RH - 0.12, fontSize: 9.5, bold: true, color: sevColor, fontFace: "Calibri", valign: "middle" });
     });
   }
 }
 
-// ── 結尾頁 ──────────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+// 結尾頁
+// ══════════════════════════════════════════════════════
 {
-  const s = pres.addSlide();
+  var s = pres.addSlide();
   s.background = { color: C.navy };
   s.addShape("rect", { x: 0, y: 0, w: 0.18, h: 5.625, fill: { color: C.accent }, line: { color: C.accent } });
   s.addShape("rect", { x: 0.18, y: 0, w: 0.08, h: 5.625, fill: { color: C.blue }, line: { color: C.blue } });
@@ -624,20 +795,18 @@ data.projects.forEach((proj) => {
     x: 1, y: 1.7, w: 8, h: 1.0,
     fontSize: 40, bold: true, color: C.white, fontFace: "Calibri", align: "center", charSpacing: 8
   });
-  s.addText(`本期報告日期：${data.reportDate}`, {
-    x: 1, y: 2.95, w: 8, h: 0.4,
-    fontSize: 13, color: "CADCFC", fontFace: "Calibri", align: "center"
+  s.addText("本期報告日期：" + data.reportDate, {
+    x: 1, y: 2.95, w: 8, h: 0.38, fontSize: 13, color: "CADCFC", fontFace: "Calibri", align: "center"
   });
-  s.addText(`下次回報日期：${data.nextReport}`, {
-    x: 1, y: 3.4, w: 8, h: 0.4,
-    fontSize: 13, color: "CADCFC", fontFace: "Calibri", align: "center"
+  s.addText("下次回報日期：" + data.nextReport, {
+    x: 1, y: 3.35, w: 8, h: 0.38, fontSize: 13, color: "CADCFC", fontFace: "Calibri", align: "center"
   });
 }
 
-// ── 輸出 ────────────────────────────────────────────────
-pres.writeFile({ fileName: outputPath }).then(() => {
-  console.log(`PPT 產生完成：${outputPath}`);
-}).catch(e => {
+// ── 輸出
+pres.writeFile({ fileName: outputPath }).then(function() {
+  console.log("PPT 產生完成：" + outputPath);
+}).catch(function(e) {
   console.error("失敗：", e);
   process.exit(1);
 });

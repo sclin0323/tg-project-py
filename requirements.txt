@@ -16,3 +16,8 @@ msal>=1.28.0
 
 # Anthropic Claude API
 anthropic>=0.40.0
+
+
+python-pptx>=0.6.21
+openpyxl>=3.1.0
+pandas>=2.0.0

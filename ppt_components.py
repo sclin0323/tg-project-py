@@ -41,7 +41,7 @@ STATUS_COLOR = {
     "完成":   C["green"],
     "進行中": C["blue"],
     "延遲":   C["red"],
-    "風險":   C["red"],
+    "風險":   C["amber"],
     "待開始": C["light"],
 }
 

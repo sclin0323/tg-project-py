@@ -61,7 +61,7 @@ def copy_excel_snapshot(excel_dir: str, snapshot_dir: str) -> int:
 def main():
     # 因為這是模擬資料，固定 today = 2026/05/12
     # 實務上要產報告時改為 date.today() 即可
-    today = date(2026, 5, 20)
+    today = date.today()
 
     print(f"=== 載入資料 (today = {today}) ===")
     print(f"    Excel 來源: {EXCEL_DIR}")
